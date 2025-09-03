@@ -36,9 +36,8 @@ function dataHojeBR() {
 }
 
 // (Opcional / legado) Versão que recebe objeto `pedido`. Mantive para compatibilidade.
-// Se você não usa esta função em lugar nenhum, pode apagar.
-function enviarWhatsApp(pedido) {
-  const PHONE = "5511999999999"; // <-- número genérico legado
+function enviarWhatsApp_legado(pedido) {
+  const PHONE = "5511999999999"; // número genérico legado
   let mensagem = `📅 Data do pedido: ${dataHojeBR()}\n`;
   mensagem += `👤 Nome: ${pedido.nome}\n🏬 Loja: ${pedido.loja}\n\n`;
 
@@ -57,7 +56,6 @@ function enviarWhatsApp(pedido) {
   const url = `https://wa.me/${PHONE}?text=${encodeURIComponent(mensagem)}`;
   window.open(url, "_blank");
 }
-
 
 // === Carimbo: gera e fixa data/hora do pedido (uma vez) ======================
 function carimbarDataDoPedido(force = false) {
@@ -103,7 +101,6 @@ function lerItensDaSecao(categoriaH2) {
         }
         // Remove o emoji ℹ️ caso ainda apareça
         label = label.replace(/ℹ️/g, "").trim();
-
         itens.push({ label, quantidade });
       }
     }
@@ -122,15 +119,14 @@ function revisarPedido() {
 
   if (!nome) {
     alert("Por favor, preencha seu nome.");
-  return;
+    return;
   }
-
   if (!loja) {
     alert("Por favor, selecione a loja.");
     return;
   }
 
-  // ADIÇÃO: gera/exibe a data/hora e preenche o hidden (mantém o mesmo carimbo depois)
+  // Gera/exibe a data/hora e preenche o hidden (mantém o mesmo carimbo depois)
   carimbarDataDoPedido();
 
   const formulario = document.getElementById("formulario");
@@ -180,7 +176,7 @@ function editarPedido() {
   document.getElementById("resumo").classList.add("hidden");
 }
 
-// ======= ENVIO QUE VOCÊ USA NO BOTÃO "Enviar via WhatsApp" =======
+// ======= ENVIO: salva no Sheets, mostra checkout e manda WhatsApp com link ===
 function enviarWhatsApp() {
   const nome = document.getElementById("nome").value.trim();
   const lojaSelect = document.getElementById("loja");
@@ -189,24 +185,26 @@ function enviarWhatsApp() {
   const formulario = document.getElementById("formulario");
   const categorias = formulario.querySelectorAll("h2");
 
-  // Reutiliza o MESMO carimbo gerado no revisar (sem force, para não mudar)
+  // Reutiliza o MESMO carimbo gerado no revisar (sem force)
   const dt = carimbarDataDoPedido();
-  const dataFmt = formatarDataHoraBR(dt); // "dd/mm/aaaa hh:mm"
+  const dataFmtBR = formatarDataHoraBR(dt); // dd/mm/aaaa hh:mm
 
   let texto = `*Pedido Cana Mania*\n`;
-  texto += `📅 *Data:* ${dataHojeBR()}\n`; // data/hora no fuso de SP
+  texto += `📅 *Data:* ${dataHojeBR()}\n`;
   texto += `👤 *Nome:* ${nome}\n🏪 *Loja:* ${loja}\n📦 *Itens:*\n`;
 
+  // (1) Montar o mapa de itens para salvar no Sheets
+  const itensMap = {}; // { "Nome do item": quantidade }
   let temPedido = false;
 
   categorias.forEach((categoria) => {
     const itensCategoria = lerItensDaSecao(categoria);
-
     if (itensCategoria.length > 0) {
       temPedido = true;
       texto += `\n*${categoria.innerText}*\n`;
       itensCategoria.forEach(({ label, quantidade }) => {
         texto += `- ${label}: ${quantidade}\n`;
+        itensMap[label] = (itensMap[label] || 0) + Number(quantidade || 0);
       });
     }
   });
@@ -216,8 +214,37 @@ function enviarWhatsApp() {
     return;
   }
 
-  const telefone = getNumeroDestino(); // seg-sex vs sáb/dom (SP)
-  const textoEncoded = encodeURIComponent(texto); // << (faltava)
-  const link = `https://wa.me/${telefone}?text=${textoEncoded}`;
-  window.open(link, "_blank");
+  // (2) Salvar no backend e obter link de checkout
+  const soData = dataFmtBR.split(" ")[0]; // só dd/mm/aaaa
+  const payload = {
+    data: soData,
+    cliente: nome,
+    telefone: "",
+    observacoes: `Loja: ${loja}`,
+    itens: itensMap
+  };
+
+  createOrder(payload).then((resp) => {
+    if (!resp.ok) {
+      alert("Falha ao salvar pedido no backend.");
+      console.error(resp);
+      return;
+    }
+
+    // (3) Mostrar link de checkout na tela
+    const linkDiv = document.getElementById("linkCheckout");
+    const href = document.getElementById("checkoutHref");
+    href.href = resp.checkoutUrl;
+    href.textContent = resp.checkoutUrl;
+    linkDiv.classList.remove("hidden");
+
+    // (4) Abrir WhatsApp com o link no final da mensagem
+    const telefone = getNumeroDestino(); 
+    const textoComLink = texto + `\n\n🔗 *Checkout:* ${resp.checkoutUrl}`;
+    const link = `https://wa.me/${telefone}?text=${encodeURIComponent(textoComLink)}`;
+    window.open(link, "_blank");
+  }).catch((err)=>{
+    alert("Erro ao comunicar com o backend.");
+    console.error(err);
+  });
 }
