@@ -4,7 +4,8 @@ const API_BASE = "https://script.google.com/macros/s/AKfycbxMFYs2POWJWJ3kQt08f-4
                     
 // Coloque aqui a URL pública do seu checkout.html no GitHub Pages
 // (ex: https://seuusuario.github.io/seurepo/checkout.html)
-const CHECKOUT_BASE = "https://permagnani.github.io/Proto-separacao/";
+const CHECKOUT_BASE = "https://permagnani.github.io/Proto-separacao/checkout.html";
+
 
 // === Funções para falar com o backend ===
 
